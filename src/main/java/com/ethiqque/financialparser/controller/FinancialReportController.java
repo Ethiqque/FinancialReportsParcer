@@ -1,5 +1,6 @@
 package com.ethiqque.financialparser.controller;
 
+import com.ethiqque.financialparser.exception.InvalidFileException;
 import com.ethiqque.financialparser.service.FinancialReportParser;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,7 +49,7 @@ public class FinancialReportController {
             return ResponseEntity.ok(parsedData);
         } catch (IOException e) {
             log.error("Error processing file: {}", e.getMessage());
-            return ResponseEntity.status(500).body(Collections.singletonMap("error", "Error processing PDF"));
+            throw  new InvalidFileException(e.getMessage());
         }
     }
 }
