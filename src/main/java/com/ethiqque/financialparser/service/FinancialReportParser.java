@@ -7,9 +7,8 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -17,6 +16,11 @@ import java.util.concurrent.Executor;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * Service class for parsing financial report PDFs.
+ * It extracts relevant financial data such as assets, liabilities, income statements,
+ * and other key metrics from the provided PDF, all data is collected from 2023.
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -24,21 +28,41 @@ public class FinancialReportParser {
 
     private Executor asyncExecutor;
 
-    public Map<String, Object> parsePdf(File file) throws IOException {
-        try (PDDocument document = PDDocument.load(file)) {
+    /**
+     * Parses the input PDF file and extracts relevant financial data.
+     *
+     * @param inputStream the InputStream of the PDF to be parsed
+     * @return a Map containing extracted financial data
+     * @throws IOException if there is an issue reading or processing the PDF
+     */
+    public Map<String, Object> parsePdf(InputStream inputStream) throws IOException {
+        Map<String, Object> data = new HashMap<>();
+
+        try (PDDocument document = PDDocument.load(inputStream)) {
             log.info("Loaded PDF document");
+
             PDFTextStripper stripper = new PDFTextStripper();
             String text = stripper.getText(document);
             log.info("Extracted PDF Text");
+
             String[] pages = text.split("Apple Inc. | 2023 Form 10-K");
-            System.out.println("Pages: " + Arrays.toString(pages));
-            return extractFinancialData(pages);
+
+            data = extractFinancialData(pages);
         } catch (IOException e) {
-            log.error("Error loading PDF: {}", e.getMessage());
-            return null;
+            log.error("Error processing PDF: {}", e.getMessage());
+            throw e;
         }
+
+        return data;
     }
 
+    /**
+     * Extracts the financial data from the parsed pages of the report.
+     * Combines various asynchronous operations to gather all necessary financial details.
+     *
+     * @param pages an array of strings representing the pages of the PDF document
+     * @return a Map containing the extracted financial data
+     */
     private Map<String, Object> extractFinancialData(String[] pages) {
         Map<String, Object> data = new HashMap<>();
 
@@ -99,6 +123,13 @@ public class FinancialReportParser {
         return data;
     }
 
+    /**
+     * Searches through the text of the PDF pages to find the page that contains the specified keyword.
+     *
+     * @param pages the array of PDF pages represented as strings
+     * @param keyword the keyword to search for
+     * @return the page containing the keyword, or null if no such page is found
+     */
     private String findPageWithText(String[] pages, String keyword) {
         for (String page : pages) {
             if (page.contains(keyword)) {
@@ -108,6 +139,13 @@ public class FinancialReportParser {
         return null;
     }
 
+    /**
+     * Parses a specific field in the financial data and returns its value for the corresponding year.
+     *
+     * @param text the text of the PDF page
+     * @param fieldName the name of the field to be extracted
+     * @return the parsed numeric value for the field, or 0.0 if not found
+     */
     private double parseFieldForYear(String text, String fieldName) {
         String[] lines = text.split("\n");
         for (String line : lines) {
@@ -127,6 +165,13 @@ public class FinancialReportParser {
         return 0.0;
     }
 
+    /**
+     * A general field parser that extracts numeric values based on field names.
+     *
+     * @param text the text of the PDF
+     * @param fieldName the name of the field to look for
+     * @return the numeric value of the field, or 0.0 if not found
+     */
     private double parseField(String text, String fieldName) {
         String[] lines = text.split("\n");
         for (int i = 0; i < lines.length; i++) {
@@ -148,6 +193,13 @@ public class FinancialReportParser {
         return 0.0;
     }
 
+    /**
+     * Parses a numeric string and converts it to a double value.
+     * Handles negative values enclosed in parentheses.
+     *
+     * @param numericString the string to be parsed
+     * @return the double value of the numeric string
+     */
     private double parseNumericString(String numericString) {
         try {
             if (numericString.startsWith("(") && numericString.endsWith(")")) {
@@ -160,6 +212,14 @@ public class FinancialReportParser {
         }
     }
 
+    /**
+     * Extracts the financial data for a specific segment and label.
+     *
+     * @param text the text of the PDF
+     * @param segment the segment to look for
+     * @param label the label within the segment
+     * @return the numeric value of the segment data, or 0.0 if not found
+     */
     private double parseSegmentData(String text, String segment, String label) {
         String pattern = segment + ":[\\s\\S]*?" + label + "\\s*\\$\\s*([0-9,]+)";
         Pattern regexPattern = Pattern.compile(pattern);
@@ -170,6 +230,12 @@ public class FinancialReportParser {
         return 0.0;
     }
 
+    /**
+     * Asynchronously extracts the income statement and EPS data from the PDF.
+     *
+     * @param pages the pages of the PDF
+     * @return a CompletableFuture containing the extracted income statement and EPS data
+     */
     @Async("asyncExecutor")
     public CompletableFuture<Map<String, Object>> extractIncomeStatementAndEPS(String[] pages) {
         Map<String, Object> data = new HashMap<>();
